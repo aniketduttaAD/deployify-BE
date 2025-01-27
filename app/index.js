@@ -65,7 +65,7 @@ async function cleanupResources(projectPath, containerName) {
     }
 }
 
-app.post('/projects/upload', upload.none(), async (req, res) => {
+app.post('/upload', upload.none(), async (req, res) => {
     const ws = req.wss.clients.values().next().value;
     try {
         const { projectName, files, runCommand = 'node server.js' } = req.body;
