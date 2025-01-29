@@ -222,6 +222,52 @@ app.post("/upload", upload.none(), async (req, res) => {
                     CMD ["serve", "-s", "build"]
                     `;
                 break;
+            case "vuejs":
+                image = "node:23-alpine3.20";
+                exposedPort = 5000;
+                dockerfile = `
+                    FROM ${image}
+                    WORKDIR /app
+                    COPY package.json ./
+                    RUN if ! command -v yarn; then npm install -g yarn; fi
+                    RUN yarn install
+                    RUN node -e "let p=require('./package.json'); if(!p.scripts.build) { p.scripts.build='vite build'; require('fs').writeFileSync('package.json', JSON.stringify(p, null, 2)) }"
+                    COPY . .
+                    RUN yarn run build
+                    RUN npm install -g serve
+                       EXPOSE ${exposedPort}
+                    CMD ["serve", "-s", "build"]
+                `;
+                break;
+            case "angularjs":
+                image = "node:23-alpine3.20";
+                exposedPort = 5000;
+                dockerfile = `
+                    FROM ${image}
+                    WORKDIR /app
+                    COPY package.json ./
+                    RUN npm install -g @angular/cli
+                    RUN npm install
+                    RUN node -e "let p=require('./package.json'); if(!p.scripts.build) { p.scripts.build='ng build'; require('fs').writeFileSync('package.json', JSON.stringify(p, null, 2)) }"
+                    COPY . .
+                    RUN npm run build
+                    RUN npm install -g serve
+                    EXPOSE ${exposedPort}
+                    CMD ["serve", "-s", "dist/angular/browser"]
+                `;
+                break;
+            case "html":
+                image = "node:23-alpine3.20";
+                exposedPort = 8080;
+                dockerfile = `
+                FROM ${image}
+                WORKDIR /app
+                RUN npm install -g http-server
+                COPY . .
+                EXPOSE ${exposedPort}
+                CMD ["http-server", ".", "-p", "8080"]
+            `;
+                break;
             default:
                 return res.status(400).json({ error: "Unsupported language." });
         }
