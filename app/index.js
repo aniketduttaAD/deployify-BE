@@ -173,7 +173,6 @@ app.post("/upload", upload.none(), async (req, res) => {
                         CMD ["php", "-S", "0.0.0.0:80", "${scriptFileName}"]
                     `;
                 break;
-
             case "golang":
                 image = "golang:1.23.5-alpine3.21";
                 const fileName = runCommand
@@ -189,6 +188,39 @@ app.post("/upload", upload.none(), async (req, res) => {
                     EXPOSE ${exposedPort}
                     CMD ["/tmp/${fileName}"]
                 `;
+                break;
+            case "nextjs":
+                image = "node:23-alpine3.20";
+                exposedPort = 3000;
+                dockerfile = `
+                    FROM ${image}
+                    WORKDIR /app
+                    COPY package.json ./
+                    RUN if ! command -v yarn; then npm install -g yarn; fi
+                    RUN yarn install
+                    RUN node -e "let p=require('./package.json'); if(!p.scripts.build) { p.scripts.build='next build'; require('fs').writeFileSync('package.json', JSON.stringify(p, null, 2)) }"
+                    COPY . .
+                    RUN yarn run build
+                    EXPOSE ${exposedPort}
+                    CMD ["yarn", "start"]
+                `;
+                break;
+            case "reactjs":
+                image = "node:23-alpine3.20";
+                exposedPort = 3000;
+                dockerfile = `
+                    FROM ${image}
+                    WORKDIR /app
+                    COPY package.json ./
+                    RUN if ! command -v yarn; then npm install -g yarn; fi
+                    RUN yarn install
+                    RUN node -e "let p=require('./package.json'); if(!p.scripts.build) { p.scripts.build='react-scripts build'; require('fs').writeFileSync('package.json', JSON.stringify(p, null, 2)) }"
+                    COPY . .
+                    RUN yarn run build
+                    RUN npm install -g serve
+                    EXPOSE ${exposedPort}
+                    CMD ["serve", "-s", "build"]
+                    `;
                 break;
             default:
                 return res.status(400).json({ error: "Unsupported language." });
