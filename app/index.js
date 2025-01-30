@@ -1,7 +1,6 @@
 const express = require("express");
 const http = require("http");
 const cors = require("cors");
-const WebSocket = require("ws");
 const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
@@ -14,7 +13,6 @@ const docker = new Docker();
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
 const PORT = 5001;
 
 app.use(
@@ -25,18 +23,6 @@ app.use(
     })
 );
 app.use(express.json());
-
-wss.on("connection", (ws) => {
-    console.log("WebSocket connection established");
-    ws.on("close", () => {
-        console.log("WebSocket connection closed");
-    });
-});
-
-app.use((req, res, next) => {
-    req.wss = wss;
-    next();
-});
 
 app.get("/health", (req, res) => {
     res.status(200).json({ message: "Server is running" });
@@ -67,7 +53,6 @@ async function cleanupResources(projectPath, containerName) {
 }
 
 app.post("/upload", upload.none(), async (req, res) => {
-    const ws = req.wss.clients.values().next().value;
     try {
         const { projectName, files, language, runCommand } = req.body;
 
@@ -77,6 +62,22 @@ app.post("/upload", upload.none(), async (req, res) => {
 
         const projectPath = `${PROJECTS_DIR}/${projectName}`;
         const containerName = `deployify-${projectName}`;
+
+        const containers = await docker.listContainers({ all: true });
+        const existingContainer = containers.find(c =>
+            c.Names.includes(`/${containerName}`)
+        );
+        if (existingContainer) {
+            return res.status(400).json({ error: `Container '${containerName}' already exists. Please choose a different project name.` });
+        }
+        const images = await docker.listImages();
+        const existingImage = images.find(img =>
+            img.RepoTags && img.RepoTags.includes(`${containerName}:latest`)
+        );
+        if (existingImage) {
+            return res.status(400).json({ error: `Docker image '${containerName}' already exists. Please choose a different project name.` });
+        }
+
         fs.mkdirSync(projectPath, { recursive: true });
 
         let completed = 0;
@@ -105,21 +106,10 @@ app.post("/upload", upload.none(), async (req, res) => {
             }
 
             completed++;
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                const progress = Math.floor((completed / totalFiles) * 100);
-                ws.send(JSON.stringify({ status: "progress", progress }));
-            }
+            console.log(`Progress: ${Math.floor((completed / totalFiles) * 100)}%`);
         }
 
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(
-                JSON.stringify({
-                    status: "progress",
-                    progress: 100,
-                    message: "Files uploaded, starting build...",
-                })
-            );
-        }
+        console.log("Files uploaded, starting build...");
 
         let image, dockerfile, installCommand, defaultRunCommand, exposedPort;
 
@@ -287,11 +277,7 @@ app.post("/upload", upload.none(), async (req, res) => {
             try {
                 const log = JSON.parse(data.toString());
                 if (log.stream) {
-                    if (ws && ws.readyState === WebSocket.OPEN) {
-                        ws.send(
-                            JSON.stringify({ status: "progress", message: log.stream })
-                        );
-                    }
+                    console.log(log.stream);
                 }
             } catch (error) {
                 console.log("Non-JSON data:", data.toString());
@@ -323,74 +309,25 @@ app.post("/upload", upload.none(), async (req, res) => {
                 } catch (err) {
                     console.error("Error creating tunnel:", err);
                     await cleanupResources(projectPath, containerName);
-                    if (ws && ws.readyState === WebSocket.OPEN) {
-                        ws.send(
-                            JSON.stringify({
-                                status: "error",
-                                message: "URL generation failed. Resources cleaned up.",
-                            })
-                        );
-                    }
                     return res.status(500).json({ error: "URL generation failed." });
                 }
 
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(
-                        JSON.stringify({
-                            status: "success",
-                            message: `Project is running at ${tunnel.url}`,
-                        })
-                    );
-                }
-
-                res
-                    .status(200)
-                    .json({ message: `Project is running at ${tunnel.url}` });
+                console.log(`Project is running at ${tunnel.url}`);
+                res.status(200).json({ message: `Project is running at ${tunnel.url}` });
             } catch (error) {
                 console.error("Error starting container:", error);
                 await cleanupResources(projectPath, containerName);
-
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(
-                        JSON.stringify({
-                            status: "error",
-                            error: "Build failed. Resources cleaned up.",
-                        })
-                    );
-                }
-
-                res
-                    .status(500)
-                    .json({ error: "An error occurred while starting the container." });
+                res.status(500).json({ error: "An error occurred while starting the container." });
             }
         });
 
         buildStream.on("error", async (error) => {
             console.error("Error building Docker image:", error);
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(
-                    JSON.stringify({
-                        status: "error",
-                        error: "Docker build failed. Resources cleaned up.",
-                    })
-                );
-            }
-
             res.status(500).json({ error: "Docker build failed." });
         });
     } catch (error) {
         console.error("Error during upload process:", error);
         await cleanupResources(PROJECTS_DIR, `deployify-${projectName}`);
-
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(
-                JSON.stringify({
-                    status: "error",
-                    error: "An error occurred during upload. Resources cleaned up.",
-                })
-            );
-        }
-
         res.status(500).json({ error: "An error occurred during upload." });
     }
 });
