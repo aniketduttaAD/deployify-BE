@@ -266,12 +266,16 @@ app.post("/upload", upload.none(), async (req, res) => {
 
             let image, dockerfile, installCommand, defaultRunCommand, exposedPort;
 
+            function getRandomPort() {
+                return Math.floor(Math.random() * (9999 - 1000 + 1)) + 1000;
+            }
+
             switch (language) {
                 case "nodejs":
                     image = "node:23-alpine3.20";
                     installCommand = "npm install";
                     defaultRunCommand = runCommand || "node server.js";
-                    exposedPort = 8080;
+                    exposedPort = getRandomPort();
                     dockerfile = `
                     FROM ${image}
                     WORKDIR /app
@@ -285,7 +289,7 @@ app.post("/upload", upload.none(), async (req, res) => {
                     installCommand = "pip install -r requirements.txt";
                     defaultRunCommand =
                         runCommand || "python manage.py runserver 0.0.0.0:8000";
-                    exposedPort = 8000;
+                    exposedPort = getRandomPort();
                     dockerfile = `
                     FROM ${image}
                     WORKDIR /app
@@ -297,7 +301,7 @@ app.post("/upload", upload.none(), async (req, res) => {
                 case "php":
                     image = "php:8.2-cli";
                     installCommand = "composer install";
-                    exposedPort = 80;
+                    exposedPort = getRandomPort();
                     const runCommandParts = runCommand ? runCommand.split(" ") : [];
                     const scriptFileName = runCommandParts[1]?.trim() || "index.php";
                     dockerfile = `
@@ -323,7 +327,7 @@ app.post("/upload", upload.none(), async (req, res) => {
                         .substring(runCommand.lastIndexOf("/") + 1)
                         .trim();
                     installCommand = `go mod tidy && go build -o /tmp/${fileName} .`;
-                    exposedPort = 8080;
+                    exposedPort = getRandomPort();
                     dockerfile = `
                     FROM ${image}
                     WORKDIR /app
@@ -335,7 +339,7 @@ app.post("/upload", upload.none(), async (req, res) => {
                     break;
                 case "nextjs":
                     image = "node:23-alpine3.20";
-                    exposedPort = 3000;
+                    exposedPort = getRandomPort();
                     dockerfile = `
                     FROM ${image}
                     WORKDIR /app
@@ -351,7 +355,7 @@ app.post("/upload", upload.none(), async (req, res) => {
                     break;
                 case "reactjs":
                     image = "node:23-alpine3.20";
-                    exposedPort = 3000;
+                    exposedPort = getRandomPort();
                     dockerfile = `
                     FROM ${image}
                     WORKDIR /app
@@ -368,7 +372,7 @@ app.post("/upload", upload.none(), async (req, res) => {
                     break;
                 case "vuejs":
                     image = "node:23-alpine3.20";
-                    exposedPort = 5000;
+                    exposedPort = getRandomPort();
                     dockerfile = `
                     FROM ${image}
                     WORKDIR /app
@@ -385,7 +389,7 @@ app.post("/upload", upload.none(), async (req, res) => {
                     break;
                 case "angularjs":
                     image = "node:23-alpine3.20";
-                    exposedPort = 5000;
+                    exposedPort = getRandomPort();
                     dockerfile = `
                     FROM ${image}
                     WORKDIR /app
