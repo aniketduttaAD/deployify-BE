@@ -74,6 +74,8 @@ const ensureMongoExpressImageExists = async () => {
     }
 };
 
+const getRandomPort = () => Math.floor(Math.random() * (40000 - 30000) + 30000);
+
 app.post("/upload", upload.none(), async (req, res) => {
     const { projectName, files, language, runCommand } = req.body;
 
@@ -93,14 +95,14 @@ app.post("/upload", upload.none(), async (req, res) => {
             try {
                 container = await docker.createContainer({
                     Image: "mongo:6.0",
-                    name: "mongodb",
+                    name: `deployify-${projectName}`,
                     Env: [
                         `MONGO_INITDB_ROOT_USERNAME=admin`,
                         `MONGO_INITDB_ROOT_PASSWORD=${mongoPassword}`,
                     ],
                     ExposedPorts: { "27017/tcp": {} },
                     HostConfig: {
-                        PortBindings: { "27017/tcp": [{ HostPort: "0" }] },
+                        PortBindings: { "27017/tcp": [{ HostPort: getRandomPort().toString() }] },
                     },
                 });
                 await container.start();
@@ -123,11 +125,11 @@ app.post("/upload", upload.none(), async (req, res) => {
                 ngrokUrl = await ngrok.connect({
                     proto: "tcp",
                     addr: containerPort,
+                    region: "us",
                 });
                 console.log("Ngrok tunnel created:", ngrokUrl);
             } catch (err) {
                 console.error("Error creating Ngrok tunnel:", err);
-                await cleanupResources("mongodb");
                 return res.status(500).json({ error: "Ngrok tunnel creation failed." });
             }
 
@@ -137,7 +139,8 @@ app.post("/upload", upload.none(), async (req, res) => {
             console.log("Step 5: Generate random container name for mongo-express.");
             const uniqueNumber = Math.floor(100000 + Math.random() * 900000);
             const mongoExpressName = `mongo-express-${uniqueNumber}`;
-
+            const ngrokHost = ngrokUrl.split("://")[1];
+            const mongoUri = `mongodb://admin:${mongoPassword}@${ngrokHost}/?authSource=admin`;
             console.log("Step 6: Create and start mongo-express container.");
             let mongoExpressContainer;
             try {
@@ -146,10 +149,11 @@ app.post("/upload", upload.none(), async (req, res) => {
                     Image: "mongo-express:latest",
                     name: mongoExpressName,
                     Env: [
+                        `ME_CONFIG_MONGODB_URL=${mongoUri}`,
                         `ME_CONFIG_MONGODB_ADMINUSERNAME=admin`,
                         `ME_CONFIG_MONGODB_ADMINPASSWORD=${mongoPassword}`,
-                        `ME_CONFIG_MONGODB_SERVER=${ngrokUrl.split("://")[1].split(":")[0]
-                        }`,
+                        // `ME_CONFIG_MONGODB_SERVER=${ngrokUrl.split("://")[1].split(":")[0]
+                        // }`,
                         `ME_CONFIG_MONGODB_PORT=${ngrokPort}`,
                         `ME_CONFIG_BASICAUTH_USERNAME=admin`,
                         `ME_CONFIG_BASICAUTH_PASSWORD=${mongoPassword}`,
@@ -163,7 +167,6 @@ app.post("/upload", upload.none(), async (req, res) => {
                 await mongoExpressContainer.start();
             } catch (error) {
                 console.error("Error creating mongo-express container:", error);
-                await cleanupResources(projectName, mongoExpressName);
                 return res
                     .status(500)
                     .json({ error: "Failed to create mongo-express container." });
@@ -176,13 +179,13 @@ app.post("/upload", upload.none(), async (req, res) => {
             console.log("mongo-express container started on port:", mongoExpressPort);
 
             console.log("Step 7: Create local tunnel for mongo-express.");
+
             let tunnel;
             try {
                 tunnel = await localtunnel({ port: mongoExpressPort });
                 console.log("Mongo Express accessible at:", tunnel.url);
             } catch (err) {
                 console.error("Error creating tunnel for mongo-express:", err);
-                await cleanupResources(projectName, mongoExpressName);
                 return res
                     .status(500)
                     .json({ error: "Mongo Express URL generation failed." });
@@ -265,10 +268,6 @@ app.post("/upload", upload.none(), async (req, res) => {
             console.log("Files uploaded, starting build...");
 
             let image, dockerfile, installCommand, defaultRunCommand, exposedPort;
-
-            function getRandomPort() {
-                return Math.floor(Math.random() * (9999 - 1000 + 1)) + 1000;
-            }
 
             switch (language) {
                 case "nodejs":
