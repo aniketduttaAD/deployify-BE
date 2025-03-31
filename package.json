@@ -12,12 +12,14 @@
   "dependencies": {
     "cors": "^2.8.5",
     "dockerode": "^4.0.4",
+    "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "fs": "^0.0.1-security",
     "http": "^0.0.1-security",
     "localtunnel": "^2.0.2",
     "multer": "^1.4.5-lts.1",
     "ngrok": "^5.0.0-beta.2",
-    "path": "^0.12.7"
+    "path": "^0.12.7",
+    "ws": "^8.18.1"
   }
 }
