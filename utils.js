@@ -27,13 +27,26 @@ async function getAvailablePort() {
 
 function createStartupScript(ngrokConfigPath, appStartCommand) {
     return `#!/bin/sh
+# Start ngrok in the background
+ngrok start --config ${ngrokConfigPath} --all &
+NGROK_PID=$!
+
+# If the exposed port and internal port are different, set up port forwarding
+if [ "$INTERNAL_PORT" != "$PORT" ]; then
+  echo "Setting up port forwarding from $PORT to $INTERNAL_PORT"
+  socat TCP-LISTEN:$PORT,fork TCP:localhost:$INTERNAL_PORT &
+  SOCAT_PID=$!
+fi
+
+# Start the application
+echo "Starting application on port $INTERNAL_PORT"
 ${appStartCommand} &
 APP_PID=$!
-ngrok start tunnel --config=${ngrokConfigPath} &
-NGROK_PID=$!
-trap 'kill $APP_PID $NGROK_PID; exit' SIGINT SIGTERM
+
+# Handle graceful shutdown
+trap 'kill $APP_PID $NGROK_PID $SOCAT_PID 2>/dev/null; exit' SIGINT SIGTERM
 wait $APP_PID
-wait $NGROK_PID`;
+`;
 }
 
 module.exports = {

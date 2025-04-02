@@ -1,10 +1,10 @@
 const axios = require('axios');
 const { NGROK_APITOKEN, NGROK_AUTHTOKEN } = require('../config');
 
-async function createNgrokReservedAddress(description) {
+async function createNgrokReservedAddress(description = 'Deployify Service') {
     const response = await axios.post(
         'https://api.ngrok.com/reserved_addrs',
-        { description: description, region: 'us' },
+        { description, region: 'us' },
         {
             headers: {
                 'Authorization': `Bearer ${NGROK_APITOKEN}`,
@@ -13,13 +13,14 @@ async function createNgrokReservedAddress(description) {
             }
         }
     );
-    return response.data;
+    return response.data.addr;
 }
 
-async function createNgrokReservedDomain(domain) {
+async function createNgrokReservedDomain(subdomain) {
+    const domain = `${subdomain}.ngrok.app`;
     const response = await axios.post(
         'https://api.ngrok.com/reserved_domains',
-        { domain: domain, region: 'us' },
+        { domain, region: 'us' },
         {
             headers: {
                 'Authorization': `Bearer ${NGROK_APITOKEN}`,
@@ -28,34 +29,35 @@ async function createNgrokReservedDomain(domain) {
             }
         }
     );
-    return response.data;
+    return response.data.domain;
 }
 
-function generateNgrokConfig(authToken, tunnelType, options) {
-    let config = `version: 3
+function generateNgrokConfig(authToken, config) {
+    const { name, type, url, port } = config;
+
+    let configContent = `version: 3
 agent:
   authtoken: ${authToken}
 endpoints:
-  - name: tunnel
+  - name: ${name}
 `;
 
-    if (tunnelType === 'http') {
-        config += `    url: ${options.domain}
+    if (type === 'http') {
+        configContent += `    url: ${url}
     upstream:
-      url: http://localhost:${options.port}`;
-    } else if (tunnelType === 'tcp') {
-        config += `    url: tcp://${options.remoteAddr}
+      url: ${port}`;
+    } else if (type === 'tcp') {
+        configContent += `    url: ${url}
     upstream:
-      url: tcp://localhost:${options.port}
+      url: ${port}
       protocol: tcp`;
     }
 
-    return config;
+    return configContent;
 }
 
 module.exports = {
     createNgrokReservedAddress,
     createNgrokReservedDomain,
-    generateNgrokConfig,
-    NGROK_AUTHTOKEN
+    generateNgrokConfig
 };
